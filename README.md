@@ -122,7 +122,11 @@ Shared utility functions sourced by the bash scripts:
 
 ### `vault/config.cfg`
 
-Central configuration file sourced by all scripts. Contains:
+Central configuration file sourced by all scripts. A template is provided as `vault/config.cfg.example` — copy it and fill in your values:
+
+```bash
+cp vault/config.cfg.example vault/config.cfg
+```
 
 | Variable | Purpose |
 |----------|---------|
