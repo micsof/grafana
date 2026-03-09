@@ -156,10 +156,6 @@ pip install -r code/python/requirements.txt
 python3 code/python/tokens_monitor.py
 ```
 
-### Scheduled execution (cron)
+### Scheduled execution
 
-```cron
-# Run daily at 08:00 UTC
-0 8 * * * cd /path/to/project && bash code/bash/tokens_service_accounts.sh >> /var/log/token_monitor.log 2>&1
-0 8 * * * cd /path/to/project && bash code/bash/tokens_cloud_policies.sh >> /var/log/token_monitor.log 2>&1
-```
+Rather than running this on a VM with cron, consider using a serverless or CI/CD scheduled job (e.g. Azure Functions Timer Trigger, GitHub Actions scheduled workflow, or GitLab CI/CD scheduled pipeline).
