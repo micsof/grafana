@@ -66,7 +66,21 @@ Each data point includes these attributes/labels:
 | `status` | `enabled` or `disabled` |
 | `expiry_state` | `days` (has expiration) or `never` (no expiration set) |
 
-The gauge value is the number of **days until expiration** (`-999` for tokens that never expire, negative values for already-expired tokens).
+The gauge value is the number of **days until expiration**:
+
+- Positive values indicate days remaining before the token expires.
+- Negative values indicate the token has already expired (e.g. `-3` means expired 3 days ago).
+- **`-999`** is a sentinel value used for tokens that are set to **never expire** (`expiry_state: never`). This allows easy filtering in Grafana dashboards.
+
+#### Grafana Dashboard Panels Examples
+
+Tokens with an expiration date — the gauge shows days until (or since) expiry:
+
+![Tokens Expiry State — Days](images/grafana_tokens_expiry_days.png)
+
+Tokens set to never expire — shown with the `-999` sentinel value:
+
+![Tokens Expiry State — Never](images/grafana_tokens_expiry_never.png)
 
 ### `bash/tokens_slack.sh`
 
