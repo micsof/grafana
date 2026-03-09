@@ -158,4 +158,5 @@ python3 code/python/tokens_monitor.py
 
 ### Scheduled execution
 
-Rather than running this on a VM with cron, consider using a serverless or CI/CD scheduled job (e.g. Azure Functions Timer Trigger, GitHub Actions scheduled workflow, or GitLab CI/CD scheduled pipeline).
+Consider using a serverless or CI/CD scheduled job (e.g. Azure Functions Timer Trigger, 
+GitHub Actions scheduled workflow, or GitLab CI/CD scheduled pipeline).
