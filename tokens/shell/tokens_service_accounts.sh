@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/../../vault/config.cfg"
+source "$SCRIPT_DIR/../vault/config.cfg"
 
 EXPIRING_ARGS=()
 PAGE=1
@@ -10,8 +10,8 @@ PER_PAGE=100
 
 while true; do
     RESPONSE=$(curl -s -w "\n%{http_code}" --connect-timeout 10 --max-time 30 \
-        "${API_URL}/api/serviceaccounts/search?perpage=${PER_PAGE}&page=${PAGE}" \
-        -H "Authorization: Bearer $API_TOKEN" \
+        "${CLOUD_INSTANCE_URL}/api/serviceaccounts/search?perpage=${PER_PAGE}&page=${PAGE}" \
+        -H "Authorization: Bearer $CLOUD_INSTANCE_TOKEN" \
         -H "Content-Type: application/json")
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
     SA_LIST=$(echo "$RESPONSE" | sed '$d')
@@ -42,8 +42,8 @@ while true; do
         fi
 
         RESPONSE=$(curl -s -w "\n%{http_code}" --connect-timeout 10 --max-time 30 \
-            "$API_URL/api/serviceaccounts/$SA_ID/tokens" \
-            -H "Authorization: Bearer $API_TOKEN" \
+            "$CLOUD_INSTANCE_URL/api/serviceaccounts/$SA_ID/tokens" \
+            -H "Authorization: Bearer $CLOUD_INSTANCE_TOKEN" \
             -H "Content-Type: application/json")
         HTTP_CODE=$(echo "$RESPONSE" | tail -1)
         TOKENS=$(echo "$RESPONSE" | sed '$d')
@@ -56,8 +56,10 @@ while true; do
         while read -r token; do
             TOKEN_NAME=$(echo "$token" | jq -r '.name')
             TOKEN_EXPIRATION=$(echo "$token" | jq -r 'if .expiration == null or .expiration == "" then "Never" else .expiration end')
+            TOKEN_CREATED=$(echo "$token" | jq -r 'if .created == null or .created == "" then "" else .created end')
+            TOKEN_LASTUSED=$(echo "$token" | jq -r 'if .lastUsedAt == null or .lastUsedAt == "" then "Never" else .lastUsedAt end')
 
-            EXPIRING_ARGS+=("$SA_NAME|$SA_STATUS|$TOKEN_NAME|$TOKEN_EXPIRATION")
+            EXPIRING_ARGS+=("$SA_NAME|$SA_STATUS|$TOKEN_NAME|$TOKEN_EXPIRATION|$TOKEN_CREATED|$TOKEN_LASTUSED")
         done < <(echo "$TOKENS" | jq -c '.[]?')
     done < <(echo "$SA_LIST" | jq -c '.serviceAccounts[]?')
 

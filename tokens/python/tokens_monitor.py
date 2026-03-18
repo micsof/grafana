@@ -9,7 +9,7 @@ from pathlib import Path
 import requests
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = SCRIPT_DIR / ".." / ".." / "vault" / "config.cfg"
+CONFIG_PATH = SCRIPT_DIR / ".." / "vault" / "config.cfg"
 PER_PAGE = 100
 
 
@@ -20,6 +20,8 @@ class TokenEntry:
     status: str
     token_name: str
     expiration: str
+    created: str
+    last_used: str
 
 
 def load_config(path: Path) -> dict:
@@ -62,6 +64,13 @@ def to_epoch(date_str: str) -> int | None:
     return None
 
 
+def to_epoch_or_sentinel(date_str: str, sentinel: int = -999) -> int:
+    if not date_str or date_str == "Never":
+        return sentinel
+    epoch = to_epoch(date_str)
+    return epoch if epoch is not None else sentinel
+
+
 def days_left(expiration: str, now_epoch: int) -> tuple[int, str]:
     """Returns (days_left_value, expiry_state)."""
     if expiration == "Never":
@@ -73,13 +82,13 @@ def days_left(expiration: str, now_epoch: int) -> tuple[int, str]:
 
 
 # --- Fetch Service Account tokens from Grafana Instance API ---
-# Uses: {API_URL}/api/serviceaccounts/search (paginated)
-# Then:  {API_URL}/api/serviceaccounts/{id}/tokens for each SA
+# Uses: {CLOUD_INSTANCE_URL}/api/serviceaccounts/search (paginated)
+# Then:  {CLOUD_INSTANCE_URL}/api/serviceaccounts/{id}/tokens for each SA
 # Skips Grafana managed service accounts (extsvc-*)
 
 def fetch_service_accounts(config: dict) -> list[TokenEntry]:
-    api_url = config["API_URL"]
-    api_token = config["API_TOKEN"]
+    api_url = config["CLOUD_INSTANCE_URL"]
+    api_token = config["CLOUD_INSTANCE_TOKEN"]
     entries = []
     page = 1
 
@@ -122,6 +131,8 @@ def fetch_service_accounts(config: dict) -> list[TokenEntry]:
                     status=sa_status,
                     token_name=token["name"],
                     expiration=parse_expiration(token.get("expiration")),
+                    created=token.get("created", ""),
+                    last_used=parse_expiration(token.get("lastUsedAt")),
                 ))
 
         if len(accounts) < PER_PAGE:
@@ -137,8 +148,8 @@ def fetch_service_accounts(config: dict) -> list[TokenEntry]:
 
 def fetch_cloud_policies(config: dict) -> list[TokenEntry]:
     cloud_api_token = config["CLOUD_API_TOKEN"]
-    policies_url = config["CLOUD_POLICIES_URL"]
-    tokens_url = config["CLOUD_TOKENS_URL"]
+    policies_url = config["CLOUD_API_POLICIES"]
+    tokens_url = config["CLOUD_API_TOKENS"]
     entries = []
 
     pol_resp = requests.get(policies_url, headers={"Authorization": f"Bearer {cloud_api_token}"}, timeout=30)
@@ -171,6 +182,8 @@ def fetch_cloud_policies(config: dict) -> list[TokenEntry]:
                 status=status,
                 token_name=token["name"],
                 expiration=parse_expiration(token.get("expiresAt")),
+                created=token.get("createdAt", ""),
+                last_used=parse_expiration(token.get("lastUsedAt")),
             ))
 
     return entries
@@ -197,13 +210,18 @@ def send_metrics(entries: list[TokenEntry], config: dict) -> None:
         print("=========================================")
         print(f" OTLP Metric: grafana_token ({token_type})")
         print("=========================================")
-        print(f"  {'type':<18} {'account_name':<28} {'token_name':<65} {'status':<10} {'expiry_state':<14} value")
+        print(f"  {'type':<18} {'account_name':<28} {'token_name':<65} {'status':<10} {'expiry_state':<14} {'created':<14} {'lastused':<14} value")
         print("-----------------------------------------")
 
         for e in type_entries:
             days_val, expiry_state = days_left(e.expiration, now_epoch)
+            created_epoch = to_epoch(e.created) or now_epoch
+            created_days = (now_epoch - created_epoch) // 86400
+            lastused_epoch = to_epoch_or_sentinel(e.last_used)
+            lastused_days = (now_epoch - lastused_epoch) // 86400 if lastused_epoch != -999 else -999
 
-            print(f"  {e.token_type:<18} {e.account_name:<28} {e.token_name:<65} {e.status:<10} {expiry_state:<14} {days_val}")
+            # Truncate long values so columns stay aligned (format spec doesn't truncate, only pads)
+            print(f"  {e.token_type[:18]:<18} {e.account_name[:28]:<28} {e.token_name[:65]:<65} {e.status[:10]:<10} {expiry_state[:14]:<14} {str(created_days)[:14]:<14} {str(lastused_days)[:14]:<14} {days_val}")
 
             datapoints.append({
                 "asInt": str(days_val),
@@ -214,6 +232,8 @@ def send_metrics(entries: list[TokenEntry], config: dict) -> None:
                     {"key": "token_name", "value": {"stringValue": e.token_name}},
                     {"key": "status", "value": {"stringValue": e.status}},
                     {"key": "expiry_state", "value": {"stringValue": expiry_state}},
+                    {"key": "created", "value": {"stringValue": str(created_days)}},
+                    {"key": "lastused", "value": {"stringValue": str(lastused_days)}},
                 ],
             })
 

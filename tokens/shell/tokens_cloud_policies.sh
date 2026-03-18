@@ -2,12 +2,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/../../vault/config.cfg"
+source "$SCRIPT_DIR/../vault/config.cfg"
 
 EXPIRING_ARGS=()
 
 RESPONSE=$(curl -s -w "\n%{http_code}" --connect-timeout 10 --max-time 30 \
-    "$CLOUD_POLICIES_URL" \
+    "$CLOUD_API_POLICIES" \
     -H "Authorization: Bearer $CLOUD_API_TOKEN")
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 POLICIES=$(echo "$RESPONSE" | sed '$d')
@@ -18,7 +18,7 @@ if [ "$HTTP_CODE" != "200" ]; then
 fi
 
 RESPONSE=$(curl -s -w "\n%{http_code}" --connect-timeout 10 --max-time 30 \
-    "$CLOUD_TOKENS_URL" \
+    "$CLOUD_API_TOKENS" \
     -H "Authorization: Bearer $CLOUD_API_TOKEN")
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 TOKENS=$(echo "$RESPONSE" | sed '$d')
@@ -38,8 +38,10 @@ while read -r policy; do
     while read -r token; do
         TOKEN_NAME=$(echo "$token" | jq -r '.name')
         TOKEN_EXPIRATION=$(echo "$token" | jq -r 'if .expiresAt == null or .expiresAt == "" then "Never" else .expiresAt end')
+        TOKEN_CREATED=$(echo "$token" | jq -r 'if .createdAt == null or .createdAt == "" then "" else .createdAt end')
+        TOKEN_LASTUSED=$(echo "$token" | jq -r 'if .lastUsedAt == null or .lastUsedAt == "" then "Never" else .lastUsedAt end')
 
-        EXPIRING_ARGS+=("$POLICY_DISPLAY|$POLICY_STATUS|$TOKEN_NAME|$TOKEN_EXPIRATION")
+        EXPIRING_ARGS+=("$POLICY_DISPLAY|$POLICY_STATUS|$TOKEN_NAME|$TOKEN_EXPIRATION|$TOKEN_CREATED|$TOKEN_LASTUSED")
     done < <(echo "$MATCHING_TOKENS" | jq -c '.[]?')
 done < <(echo "$POLICIES" | jq -c '.items[]?')
 

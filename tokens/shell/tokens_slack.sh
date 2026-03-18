@@ -1,10 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-# Usage: tokens_slack.sh "service_account|cloud_policy" "account_name|status|token_name|expiration" ...
+# Usage: tokens_slack.sh "service_account|cloud_policy" "account_name|status|token_name|expiration|created|lastused" ...
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/../../vault/config.cfg"
+source "$SCRIPT_DIR/../vault/config.cfg"
 source "$SCRIPT_DIR/functions.sh"
 
 NOW_EPOCH=$(date +%s)
@@ -26,7 +26,7 @@ else
 fi
 
 for ENTRY in "$@"; do
-    IFS='|' read -r ACCOUNT_NAME STATUS TOKEN_NAME EXPIRATION <<< "$ENTRY"
+    IFS='|' read -r ACCOUNT_NAME STATUS TOKEN_NAME EXPIRATION _ _ <<< "$ENTRY"
 
     if [ "$EXPIRATION" = "Never" ]; then
         continue
@@ -68,7 +68,7 @@ echo "Found $COUNT expiring token(s). Sending Slack notification..."
 
 MAX_SECTION_LEN=2900
 HEADER_TEXT=":rotating_light: ${COUNT} Grafana Token(s) Expiration Status"
-CONTEXT_TEXT=":grafana: <${API_URL}|Open Grafana> | Stack: ${CLOUD_STACK_ID}"
+CONTEXT_TEXT=":grafana: <${CLOUD_INSTANCE_URL}|Open Grafana> | Stack: ${CLOUD_STACK_ID}"
 PREFIX="The following tokens on stack *${CLOUD_STACK_ID}* are expiring:"
 
 SECTIONS_JSON="[]"

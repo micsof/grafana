@@ -1,10 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-# Usage: tokens_metrics.sh "service_account|cloud_policy" "account_name|status|token_name|expiration" ...
+# Usage: tokens_metrics.sh "service_account|cloud_policy" "account_name|status|token_name|expiration|created|lastused" ...
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/../../vault/config.cfg"
+source "$SCRIPT_DIR/../vault/config.cfg"
 source "$SCRIPT_DIR/functions.sh"
 
 NOW_EPOCH=$(date +%s)
@@ -23,11 +23,11 @@ DATAPOINTS_JSONL=""
 echo "========================================="
 echo " OTLP Metric: grafana_token (${TYPE})"
 echo "========================================="
-printf "  %-18s %-28s %-65s %-10s %-14s %s\n" "type" "account_name" "token_name" "status" "expiry_state" "value"
+printf "  %-18s %-28s %-65s %-10s %-14s %-14s %-14s %s\n" "type" "account_name" "token_name" "status" "expiry_state" "created" "lastused" "value"
 echo "-----------------------------------------"
 
 for ENTRY in "$@"; do
-    IFS='|' read -r ACCOUNT_NAME STATUS TOKEN_NAME TOKEN_EXPIRES <<< "$ENTRY"
+    IFS='|' read -r ACCOUNT_NAME STATUS TOKEN_NAME TOKEN_EXPIRES CREATED LASTUSED <<< "$ENTRY"
 
     if [ "$TOKEN_EXPIRES" = "Never" ]; then
         DAYS_LEFT_VAL=-999
@@ -41,7 +41,32 @@ for ENTRY in "$@"; do
         EXPIRY_STATE="days"
     fi
 
-    printf "  %-18s %-28s %-65s %-10s %-14s %s\n" "$TYPE" "$ACCOUNT_NAME" "$TOKEN_NAME" "$STATUS" "$EXPIRY_STATE" "$DAYS_LEFT_VAL"
+    # created: days since creation
+    if [ -n "$CREATED" ]; then
+        CREATED_EPOCH=$(to_epoch "$CREATED") || true
+        CREATED_DAYS=$([ -n "$CREATED_EPOCH" ] && floor_days $(( NOW_EPOCH - CREATED_EPOCH )) || echo "0")
+    else
+        CREATED_DAYS="0"
+    fi
+
+    # lastused: days since last used, or -999 if never
+    if [ -z "$LASTUSED" ] || [ "$LASTUSED" = "Never" ]; then
+        LASTUSED_DAYS="-999"
+    else
+        LASTUSED_EPOCH=$(to_epoch "$LASTUSED") || true
+        LASTUSED_DAYS=$([ -n "$LASTUSED_EPOCH" ] && floor_days $(( NOW_EPOCH - LASTUSED_EPOCH )) || echo "-999")
+    fi
+
+    # Truncate long values so columns stay aligned (printf doesn't truncate, only pads)
+    printf "  %-18s %-28s %-65s %-10s %-14s %-14s %-14s %s\n" \
+        "${TYPE:0:18}" \
+        "${ACCOUNT_NAME:0:28}" \
+        "${TOKEN_NAME:0:65}" \
+        "${STATUS:0:10}" \
+        "${EXPIRY_STATE:0:14}" \
+        "${CREATED_DAYS:0:14}" \
+        "${LASTUSED_DAYS:0:14}" \
+        "$DAYS_LEFT_VAL"
 
     DATAPOINTS_JSONL+=$(jq -n \
         --arg days "$DAYS_LEFT_VAL" \
@@ -51,6 +76,8 @@ for ENTRY in "$@"; do
         --arg token "$TOKEN_NAME" \
         --arg status "$STATUS" \
         --arg expiry_state "$EXPIRY_STATE" \
+        --arg created "$CREATED_DAYS" \
+        --arg lastused "$LASTUSED_DAYS" \
         '{
             asInt: $days,
             timeUnixNano: $time,
@@ -59,7 +86,9 @@ for ENTRY in "$@"; do
                 { key: "account_name", value: { stringValue: $account } },
                 { key: "token_name", value: { stringValue: $token } },
                 { key: "status", value: { stringValue: $status } },
-                { key: "expiry_state", value: { stringValue: $expiry_state } }
+                { key: "expiry_state", value: { stringValue: $expiry_state } },
+                { key: "created", value: { stringValue: $created } },
+                { key: "lastused", value: { stringValue: $lastused } }
             ]
         }')
     DATAPOINTS_JSONL+=$'\n'
